@@ -9,6 +9,8 @@ from threading import Event
 
 from mbientlab.metawear import cbindings, libmetawear, parse_value
 
+from src.logger import LOG
+
 
 class SensorDevice:
     """
@@ -60,7 +62,7 @@ class SensorDevice:
 
     def _data_handler(self, _, raw_data, data_queue: mp.Queue, msg: str) -> None:
         data = parse_value(raw_data)
-        print(f'{msg}: {data}')
+        LOG.debug(f'{msg}: {data:.4f}')
         if self.raw:
             data = [data.x, data.y, data.z]
         else:
@@ -79,7 +81,7 @@ class SensorDevice:
             latency (int): Maximum number of consecutive non-answered calls allowed.
             timeout (int): Connection timeout in miliseconds.
         """
-        self.device.on_disconnect = lambda status: print("disconnected")
+        self.device.on_disconnect = lambda status: LOG.warning("disconnected from device")
         self.device.connect()
         time.sleep(1)
         if not self.device.is_connected:
@@ -97,25 +99,25 @@ class SensorDevice:
             libmetawear.mbl_mw_gyro_bmi160_enable_rotation_sampling(self.device.board)
         if self.temperatue:
             raise NotImplementedError("Temperature streaming is not yet implemented")
-        print("Streaming data...")
+        LOG.info("Streaming data...")
         libmetawear.mbl_mw_acc_start(self.device.board)
         libmetawear.mbl_mw_gyro_bmi160_start(self.device.board)
 
     def stop_streaming(self) -> None:
         """ Stop streaming data. """
-        print("Stopping streaming...")
+        LOG.info("Stopping streaming...")
         if self.acc:
-            print("removing acc callback")
+            LOG.info("removing acc callback")
             libmetawear.mbl_mw_acc_stop(self.device.board)
             libmetawear.mbl_mw_acc_disable_acceleration_sampling(self.device.board)
         if self.gyro:
-            print("removing gyro callback")
+            LOG.info("removing gyro callback")
             libmetawear.mbl_mw_gyro_bmi160_stop(self.device.board)
             libmetawear.mbl_mw_gyro_bmi160_disable_rotation_sampling(self.device.board)
         if self.temperatue:
             raise NotImplementedError("Temperature streaming is not yet implemented")
         time.sleep(1)
-        print(f"streamed {self.samples} samples")
+        LOG.info(f"streamed {self.samples} samples")
         self.samples = 0
         libmetawear.mbl_mw_debug_reset(self.device.board)
 
@@ -126,8 +128,12 @@ class SensorDevice:
         acc_signal = self._register_accelerometer(frequency, acc_range)
         gyro_signal = self._register_gyroscope()
         if not self.raw:
+            LOG.debug(f'setting up acc signal processor: {acc_signal}')
             acc_signal = _create_standard_preprocessor(acc_signal, 5, 0.01)
+            LOG.debug(f'output acc signal: {acc_signal}')
+            LOG.debug(f'setting up gyro signal processor: {gyro_signal}')
             gyro_signal = _create_standard_preprocessor(gyro_signal, 5, 5)
+            LOG.debug(f'output gyro signal: {gyro_signal}')
         _subscribe_to_signal(acc_signal, self.acc_callback)
         _subscribe_to_signal(gyro_signal, self.gyro_callback)
 

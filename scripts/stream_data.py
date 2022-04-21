@@ -11,6 +11,7 @@ from mbientlab.metawear import MetaWear
 
 from src.data_writer import DataWriter
 from src.helpers import consume_data_queue
+from src.logger import LOG
 from src.sensor_stream import SensorDevice
 
 
@@ -45,10 +46,11 @@ def main():
         main_event.wait()
     except KeyboardInterrupt:
         print()
+        LOG.info('Keyboard interrupt received. Stopping stream.')
         if stream_process.is_alive():
             stream_process.close()
         stream.stop_streaming()
-        print("waiting for write process to finish, please wait...")
+        LOG.info("waiting for write process to finish, please wait...")
         acc_queue.close()
         gyro_queue.close()
         acc_queue_event.wait(5)
@@ -57,7 +59,7 @@ def main():
         gyro_write_process.kill()
         acc_writer.close()
         gyro_writer.close()
-        print("exiting")
+        LOG.info("exiting")
         main_event.set()
 
 

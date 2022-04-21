@@ -9,6 +9,7 @@ from multiprocessing.synchronize import Event
 import time
 
 from src.data_writer import DataWriter
+from src.logger import LOG
 
 
 def disable_control_c(func):
@@ -30,6 +31,6 @@ def consume_data_queue(event: Event, data_queue: Queue, writer: DataWriter, slee
             event.clear()
             writer.write_data(data)
         except queue.Empty:
-            print("No data in queue")
+            LOG.debug("No data in queue")
             event.set()
             time.sleep(sleep_time)
