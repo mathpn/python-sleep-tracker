@@ -51,6 +51,26 @@ class DataWriter:
 
 
 class StreamDevice:
+    """
+    Wrapper class around MetaWear device with convenience methods to stream sensor data.
+
+    Attributes:
+        device (MetaWear): MetaWear device object.
+        samples (int): Number of samples streamed.
+        acc_queue (mp.Queue): Queue to store accelerometer data.
+        gyro_queue (mp.Queue): Queue to store gyroscope data.
+        acc_callback (cbindings.FnVoid_VoidP_DataP): Accelerometer data callback.
+        gyro_callback (cbindings.FnVoid_VoidP_DataP): Gyroscope data callback.
+        acc (bool): Whether to stream accelerometer data.
+        gyro (bool): Whether to stream gyroscope data.
+        temperature (bool): Whether to stream temperature data.
+
+    Methods:
+        connect (): Connect to MetaWear device.
+        register_sensors (): Configure and subscribe to sensor signals.
+        stream_data (): Stream sensor data.
+        stop_streaming (): Stop streaming sensor data.
+    """
     def __init__(self, device, acc_queue: mp.Queue, gyro_queue: mp.Queue):
         self.device = device
         self.samples = 0
@@ -66,19 +86,25 @@ class StreamDevice:
         data: cbindings.CartesianFloat = parse_value(raw_data)
         data_tuple = (data.x, data.y, data.z)
         self.acc_queue.put(data_tuple)
-        # self.stream_writer.write_acc_data(data_tuple)
-        # self.samples += 1
+        self.samples += 1
 
     def _gyro_data_handler(self, _, raw_data):
         data: cbindings.CartesianFloat = parse_value(raw_data)
         data_tuple = (data.x, data.y, data.z)
         self.gyro_queue.put(data_tuple)
-        # self.stream_writer.write_gyro_data(data_tuple)
-        # self.samples += 1
+        self.samples += 1
 
     def connect(
         self, min_conn_interval: float = 7.5, max_conn_interval: float = 7.5, latency: int = 0, timeout: int = 6000
     ) -> None:
+        """
+        Connect to MetaWear device.
+        Parameters:
+            min_conn_interval (float): Minimum connection interval in miliseconds.
+            max_conn_interval (float): Maximum connection interval in miliseconds.
+            latency (int): Maximum number of consecutive non-answered calls allowed.
+            timeout (int): Connection timeout in miliseconds.
+        """
         self.device.on_disconnect = lambda status: print("disconnected")
         self.device.connect()
         time.sleep(1)
@@ -119,6 +145,9 @@ class StreamDevice:
         self.samples = 0
 
     def register_sensors(self, frequency: float, acc_range: float = 8.0) -> None:
+        """ Configure and subscribe to sensor signals. """
+        # TODO: Add temperature streaming
+        # TODO: gyroscope frequency
         acc_signal = self._register_accelerometer(frequency, acc_range)
         gyro_signal = self._register_gyroscope()
         self._subscribe_sensors(acc_signal, gyro_signal)
