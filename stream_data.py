@@ -1,11 +1,11 @@
 import sys
 import time
-from ctypes import c_void_p
+import threading
 from threading import Event
+from typing import Tuple
 
-from mbientlab.metawear import MetaWear, parse_value, libmetawear
-from mbientlab.metawear.cbindings import *
-from mbientlab.warble import *
+from mbientlab.metawear import cbindings, libmetawear, MetaWear, parse_value
+from mbientlab import warble
 
 
 class StreamWriter:
@@ -22,21 +22,17 @@ class StreamWriter:
         self.acc_file.write("timestamp,x (g/s),y (g/s),z (g/s)\n")
         self.gyro_file.write("timestamp,x (rad/s),y (rad/s),z (rad/s)\n")
 
-    def write_acc_data(self, data: CartesianFloat):
+    def write_acc_data(self, data: Tuple[float, float, float]) -> None:
         """ Write sensor data to file. """
-        list_data = [data.x, data.y, data.z]
-        str_data = map(str, list_data)
-        line = f"{time.time():.3f},{','.join(str_data)}\n"
+        line = f"{time.time():.3f},{','.join(map(str, data))}\n"
         self.acc_file.write(line)
 
-    def write_gyro_data(self, data: CartesianFloat):
+    def write_gyro_data(self, data: Tuple[float, float, float]) -> None:
         """ Write sensor data to file. """
-        list_data = [data.x, data.y, data.z]
-        str_data = map(str, list_data)
-        line = f"{time.time():.3f},{','.join(str_data)}\n"
+        line = f"{time.time():.3f},{','.join(map(str, data))}\n"
         self.gyro_file.write(line)
 
-    def close(self):
+    def close(self) -> None:
         """ Close the file. """
         self.acc_file.close()
         self.gyro_file.close()
@@ -46,23 +42,29 @@ class StreamDevice:
         self.device = device
         self.samples = 0
         self.stream_writer = stream_writer
-        self.acc_callback = FnVoid_VoidP_DataP(self._acc_data_handler)
-        self.gyro_callback = FnVoid_VoidP_DataP(self._gyro_data_handler)
+        self.acc_callback = cbindings.FnVoid_VoidP_DataP(self._acc_data_handler)
+        self.gyro_callback = cbindings.FnVoid_VoidP_DataP(self._gyro_data_handler)
         self.acc = False
         self.gyro = False
         self.temperatue = False
 
-    def _acc_data_handler(self, _, data):
-        #print(parse_value(data))
-        self.stream_writer.write_acc_data(parse_value(data))
+    def _acc_data_handler(self, _, raw_data):
+        print(parse_value(raw_data))
+        data: cbindings.CartesianFloat = parse_value(raw_data)
+        data_tuple = (data.x, data.y, data.z)
+        self.stream_writer.write_acc_data(data_tuple)
         #self.samples += 1
 
-    def _gyro_data_handler(self, _, data):
-        #print(parse_value(data))
-        self.stream_writer.write_gyro_data(parse_value(data))
+    def _gyro_data_handler(self, _, raw_data):
+        print(parse_value(raw_data))
+        data: cbindings.CartesianFloat = parse_value(raw_data)
+        data_tuple = (data.x, data.y, data.z)
+        self.stream_writer.write_gyro_data(data_tuple)
         #self.samples += 1
 
-    def connect(self, min_conn_interval: float = 7.5, max_conn_interval: float = 7.5, latency: int = 0, timeout: int = 6000):
+    def connect(
+            self, min_conn_interval: float = 7.5, max_conn_interval: float = 7.5,
+            latency: int = 0, timeout: int = 6000) -> None:
         self.device.on_disconnect = lambda status: print("disconnected")
         self.device.connect()
         time.sleep(1)
@@ -118,8 +120,8 @@ class StreamDevice:
 
     def _register_gyroscope(self) -> int:
         """ Register the gyroscope data signal """
-        libmetawear.mbl_mw_gyro_bmi160_set_odr(self.device.board, GyroBoschOdr._50Hz)
-        libmetawear.mbl_mw_gyro_bmi160_set_range(self.device.board, GyroBoschRange._1000dps)
+        libmetawear.mbl_mw_gyro_bmi160_set_odr(self.device.board, cbindings.GyroBoschOdr._50Hz)
+        libmetawear.mbl_mw_gyro_bmi160_set_range(self.device.board, cbindings.GyroBoschRange._1000dps)
         libmetawear.mbl_mw_gyro_bmi160_write_config(self.device.board)
         signal = libmetawear.mbl_mw_gyro_bmi160_get_rotation_data_signal(self.device.board)
         self.gyro = True
