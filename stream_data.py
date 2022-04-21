@@ -7,8 +7,32 @@ from mbientlab.metawear.cbindings import *
 from mbientlab.warble import *
 
 
+class StreamWriter:
+    """ Class used to write sensor data to a file. """
+
+    def __init__(self, filename: str):
+        self.filename = filename
+        self.file = open(self.filename, 'w', encoding='utf-8')
+        self._write_header()
+
+    def _write_header(self):
+        """ Write the header to the file. """
+        self.file.write("timestamp,x,y,z\n")
+
+    def write_data(self, data: CartesianFloat):
+        """ Write sensor data to file. """
+        list_data = [data.x, data.y, data.z]
+        str_data = map(str, list_data)
+        line = f"{time.time():.3f},{','.join(str_data)}\n"
+        self.file.write(line)
+
+    def close(self):
+        """ Close the file. """
+        self.file.close()
+
+
 class StreamDevice:
-    def __init__(self, device, stream_writer):
+    def __init__(self, device, stream_writer: StreamWriter):
         self.device = device
         self.samples = 0
         self.stream_writer = stream_writer
@@ -71,19 +95,18 @@ class StreamDevice:
         self.acc = True
         time.sleep(2)
 
-    def _data_handler(self, ctx, data):
-        # TODO proper data handling to storage
-        print("%s -> %s" % (self.device.address, parse_value(data)))
-        self.samples += 1
-
 
 def main():
+    import faulthandler
+    faulthandler.enable(all_threads=True)
+
     address = sys.argv[1]
     device = MetaWear(address)
 
-    stream = SensorStream(device)
+    stream_writer = StreamWriter("data.csv")
+    stream = StreamDevice(device, stream_writer)
     stream.connect()
-    stream.register_accelerometer(25.0, 16.0)
+    stream.register_accelerometer(25.0, 8.0)
     stream.stream_data()
     time.sleep(10)
     stream.stop_streaming()
