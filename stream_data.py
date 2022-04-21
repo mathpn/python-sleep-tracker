@@ -1,6 +1,8 @@
+import signal
 import sys
 import time
-import threading
+import multiprocessing as mp
+import queue
 from threading import Event
 from typing import Tuple
 
@@ -8,40 +10,52 @@ from mbientlab.metawear import cbindings, libmetawear, MetaWear, parse_value
 from mbientlab import warble
 
 
-class StreamWriter:
+def disable_control_c(func):
+    """ Decorator to disable KeyboardInterrupt exit, use with caution. """
+
+    def wrapper(*args, **kwargs):
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        func(*args, **kwargs)
+
+    return wrapper
+
+
+class DataWriter:
     """ Class used to write sensor data to a file. """
 
-    def __init__(self, filename: str):
+    def __init__(self, filename: str, units: str):
         self.filename = filename
-        self.acc_file = open(f'acc_{self.filename}', 'w', encoding='utf-8')
-        self.gyro_file = open(f'gyro_{self.filename}', 'w', encoding='utf-8')
+        self.units = units
+        self.file = open(f"{self.filename}", "w", encoding="utf-8")
         self._write_header()
 
     def _write_header(self):
         """ Write the header to the file. """
-        self.acc_file.write("timestamp,x (g/s),y (g/s),z (g/s)\n")
-        self.gyro_file.write("timestamp,x (rad/s),y (rad/s),z (rad/s)\n")
+        self.file.write(f"timestamp,x {self.units},y {self.units},z {self.units}\n")
 
-    def write_acc_data(self, data: Tuple[float, float, float]) -> None:
-        """ Write sensor data to file. """
-        line = f"{time.time():.3f},{','.join(map(str, data))}\n"
-        self.acc_file.write(line)
+    def _format_line(self, data: Tuple[float, float, float]) -> str:
+        """ Format float data to string. """
 
-    def write_gyro_data(self, data: Tuple[float, float, float]) -> None:
+        def parse_floats(x):
+            return f"{x:.4f}"
+
+        return f"{time.time():.3f},{','.join(map(parse_floats, data))}\n"
+
+    def write_data(self, data: Tuple[float, float, float]) -> None:
         """ Write sensor data to file. """
-        line = f"{time.time():.3f},{','.join(map(str, data))}\n"
-        self.gyro_file.write(line)
+        self.file.write(self._format_line(data))
 
     def close(self) -> None:
         """ Close the file. """
-        self.acc_file.close()
-        self.gyro_file.close()
+        self.file.close()
+
 
 class StreamDevice:
-    def __init__(self, device, stream_writer: StreamWriter):
+    def __init__(self, device, acc_queue: mp.Queue, gyro_queue: mp.Queue):
         self.device = device
         self.samples = 0
-        self.stream_writer = stream_writer
+        self.acc_queue = acc_queue
+        self.gyro_queue = gyro_queue
         self.acc_callback = cbindings.FnVoid_VoidP_DataP(self._acc_data_handler)
         self.gyro_callback = cbindings.FnVoid_VoidP_DataP(self._gyro_data_handler)
         self.acc = False
@@ -49,29 +63,30 @@ class StreamDevice:
         self.temperatue = False
 
     def _acc_data_handler(self, _, raw_data):
-        print(parse_value(raw_data))
         data: cbindings.CartesianFloat = parse_value(raw_data)
         data_tuple = (data.x, data.y, data.z)
-        self.stream_writer.write_acc_data(data_tuple)
-        #self.samples += 1
+        self.acc_queue.put(data_tuple)
+        # self.stream_writer.write_acc_data(data_tuple)
+        # self.samples += 1
 
     def _gyro_data_handler(self, _, raw_data):
-        print(parse_value(raw_data))
         data: cbindings.CartesianFloat = parse_value(raw_data)
         data_tuple = (data.x, data.y, data.z)
-        self.stream_writer.write_gyro_data(data_tuple)
-        #self.samples += 1
+        self.gyro_queue.put(data_tuple)
+        # self.stream_writer.write_gyro_data(data_tuple)
+        # self.samples += 1
 
     def connect(
-            self, min_conn_interval: float = 7.5, max_conn_interval: float = 7.5,
-            latency: int = 0, timeout: int = 6000) -> None:
+        self, min_conn_interval: float = 7.5, max_conn_interval: float = 7.5, latency: int = 0, timeout: int = 6000
+    ) -> None:
         self.device.on_disconnect = lambda status: print("disconnected")
         self.device.connect()
         time.sleep(1)
         if not self.device.is_connected:
             raise ConnectionError("Failed to connect to MetaWear board")
         libmetawear.mbl_mw_settings_set_connection_parameters(
-            self.device.board, min_conn_interval, max_conn_interval, latency, timeout)
+            self.device.board, min_conn_interval, max_conn_interval, latency, timeout
+        )
         time.sleep(1)
 
     def stream_data(self) -> None:
@@ -88,28 +103,27 @@ class StreamDevice:
 
     def stop_streaming(self) -> None:
         """ Stop streaming data. """
-        print('Stopping streaming...')
+        print("Stopping streaming...")
         if self.acc:
-            print('removing acc callback')
+            print("removing acc callback")
             libmetawear.mbl_mw_acc_stop(self.device.board)
             libmetawear.mbl_mw_acc_disable_acceleration_sampling(self.device.board)
         if self.gyro:
-            print('removing gyro callback')
+            print("removing gyro callback")
             libmetawear.mbl_mw_gyro_bmi160_stop(self.device.board)
             libmetawear.mbl_mw_gyro_bmi160_disable_rotation_sampling(self.device.board)
         if self.temperatue:
             raise NotImplementedError("Temperature streaming is not yet implemented")
-        print('closing file connection')
-        self.stream_writer.close()
-        print(f'streamed {self.samples} samples')
+        time.sleep(1)
+        print(f"streamed {self.samples} samples")
         self.samples = 0
 
-    def register_fusion(self, frequency: float, acc_range: float = 8.0) -> None:
+    def register_sensors(self, frequency: float, acc_range: float = 8.0) -> None:
         acc_signal = self._register_accelerometer(frequency, acc_range)
         gyro_signal = self._register_gyroscope()
         self._subscribe_sensors(acc_signal, gyro_signal)
 
-    def _register_accelerometer(self, frequency: float = 25.0, value_range: float = 8.0) -> int:
+    def _register_accelerometer(self, frequency: float, value_range: float) -> int:
         """ Register the accelerometer data signal. """
         libmetawear.mbl_mw_acc_set_odr(self.device.board, frequency)
         libmetawear.mbl_mw_acc_set_range(self.device.board, value_range)
@@ -132,25 +146,60 @@ class StreamDevice:
         libmetawear.mbl_mw_datasignal_subscribe(gyro_signal, None, self.gyro_callback)
 
 
+@disable_control_c
+def consume_data_queue(event: Event, data_queue: mp.Queue, writer: DataWriter, sleep_time: int = 2) -> None:
+    """ Consume a data queue with a writer."""
+    while True:
+        try:
+            data = data_queue.get(timeout=1)
+            event.clear()
+            writer.write_data(data)
+        except queue.Empty:
+            print("No data in queue")
+            event.set()
+            time.sleep(sleep_time)
+
 
 def main():
-    import faulthandler
-    faulthandler.enable(all_threads=True)
-
     address = sys.argv[1]
     device = MetaWear(address)
 
-    event = Event()
-    stream_writer = StreamWriter("data.csv")
-    stream = StreamDevice(device, stream_writer)
+    acc_queue = mp.Queue(25000)
+    gyro_queue = mp.Queue(25000)
+    acc_queue_event = mp.Event()
+    gyro_queue_event = mp.Event()
+
+    main_event = Event()
+    acc_writer = DataWriter("acc_data.csv", "(g/s)")
+    gyro_writer = DataWriter("gyro_data.csv", "(rad/s)")
+    stream = StreamDevice(device, acc_queue, gyro_queue)
     stream.connect()
-    stream.register_fusion(50.0, 8.0)
-    stream.stream_data()
+    stream.register_sensors(50.0, 8.0)
+
+    stream_process = mp.Process(target=stream.stream_data())
+    acc_write_process = mp.Process(target=consume_data_queue, args=(acc_queue_event, acc_queue, acc_writer))
+    gyro_write_process = mp.Process(target=consume_data_queue, args=(gyro_queue_event, gyro_queue, gyro_writer))
+    stream_process.start()
+    acc_write_process.start()
+    gyro_write_process.start()
     try:
-        event.wait()
+        main_event.wait()
     except KeyboardInterrupt:
+        print()
+        if stream_process.is_alive():
+            stream_process.close()
         stream.stop_streaming()
-        event.clear()
+        print("waiting for write process to finish, please wait...")
+        acc_queue.close()
+        gyro_queue.close()
+        acc_queue_event.wait(5)
+        gyro_queue_event.wait(5)
+        acc_write_process.kill()
+        gyro_write_process.kill()
+        acc_writer.close()
+        gyro_writer.close()
+        print("exiting")
+        main_event.set()
 
 
 if __name__ == "__main__":
