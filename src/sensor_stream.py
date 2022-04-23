@@ -184,7 +184,7 @@ def _register_delta_preprocessor(signal_id: int, min_delta: float) -> int:
     """ Register the delta preprocessor. """
     register_callable = partial(
         libmetawear.mbl_mw_dataprocessor_delta_create, signal_id,
-        cbindings.DeltaMode.ABSOLUTE, min_delta, None)
+        cbindings.DeltaMode.DIFFERENTIAL, min_delta, None)
     return _register_data_processor(register_callable)
 
 
