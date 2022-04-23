@@ -129,10 +129,10 @@ class SensorDevice:
         gyro_signal = self._register_gyroscope()
         if not self.raw:
             LOG.debug(f'setting up acc signal processor: {acc_signal}')
-            acc_signal = _create_standard_preprocessor(acc_signal, 5, 0.01)
+            acc_signal = _create_standard_preprocessor(acc_signal, 5, 0.005)
             LOG.debug(f'output acc signal: {acc_signal}')
             LOG.debug(f'setting up gyro signal processor: {gyro_signal}')
-            gyro_signal = _create_standard_preprocessor(gyro_signal, 5, 5)
+            gyro_signal = _create_standard_preprocessor(gyro_signal, 5, 3)
             LOG.debug(f'output gyro signal: {gyro_signal}')
         _subscribe_to_signal(acc_signal, self.acc_callback)
         _subscribe_to_signal(gyro_signal, self.gyro_callback)
