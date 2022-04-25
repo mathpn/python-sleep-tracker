@@ -2,14 +2,98 @@
 Module containing helper functions and SensorDevice class to stream data from MetaWear devices.
 """
 
+from enum import Enum
 from functools import partial
 import time
 import multiprocessing as mp
 from threading import Event
+from typing import Optional
 
-from mbientlab.metawear import cbindings, libmetawear, parse_value
+from mbientlab.metawear import cbindings, Const, libmetawear, MetaWear, parse_value
 
 from src.logger import LOG
+
+
+class MetaWearDevice:
+
+    def __init__(self, mac_address: str):
+        self.mac_address = mac_address
+        self.device = MetaWear(self.mac_address)
+        self.device.on_disconnect = lambda status: LOG.warning("disconnected from device")
+
+    def connect(self):
+        try:
+            self.device.connect()
+            LOG.info(f"Connected to {self.mac_address}")
+        except Exception as exc:
+            LOG.error(f"Failed to connect to {self.mac_address}: {exc}")
+
+    def disconnect(self):
+        libmetawear.mbl_mw_debug_reset(self.device.board)
+        self.device.disconnect()
+
+    @property
+    def acc_model(self):
+        return libmetawear.mbl_mw_metawearboard_lookup_module(
+            self.device.board, cbindings.Module.ACCELEROMETER
+        )
+
+    @property
+    def gyro_model(self):
+        return libmetawear.mbl_mw_metawearboard_lookup_module(
+            self.device.board, cbindings.Module.GYRO
+        )
+
+    def return_acc_freq_options(self) -> Enum:
+        # TODO implement
+        pass
+
+    def return_acc_range_options(self) -> Optional[Enum]:
+        model = self.acc_model
+        enum_name = 'Accelerometer Range'
+        if (
+                model == Const.MODULE_ACC_TYPE_BMI160
+                or model == Const.MODULE_ACC_TYPE_BMI270
+                or model == Const.MODULE_ACC_TYPE_BMA255
+            ):
+            return _parse_option_enum(cbindings.AccBoschRange, enum_name)
+        if model == Const.MODULE_ACC_TYPE_MMA8452Q:
+            return _parse_option_enum(cbindings.AccMma8452qRange, enum_name)
+
+        LOG.warning('Accelerometer not supported on this device')
+        return None
+
+    def return_gyro_freq_options(self) -> Optional[Enum]:
+        model = self.gyro_model
+        enum_name = 'Gyroscope Frequency'
+        if model == Const.MODULE_GYRO_TYPE_BMI160:
+            return _parse_option_enum(cbindings.GyroBoschOdr, enum_name)
+        if model == Const.MODULE_GYRO_TYPE_BMI270:
+            return _parse_option_enum(cbindings.GyroBoschOdr, enum_name)
+        LOG.warning('Gyroscope not supported on this device')
+        return None
+
+    def return_gyro_range_options(self) -> Optional[Enum]:
+        model = self.gyro_model
+        enum_name = 'Gyroscope Range'
+        if model == Const.MODULE_GYRO_TYPE_BMI160:
+            return _parse_option_enum(cbindings.GyroBoschRange, enum_name)
+        if model == Const.MODULE_GYRO_TYPE_BMI270:
+            return _parse_option_enum(cbindings.GyroBoschRange, enum_name)
+        LOG.warning('Gyroscope not supported on this device')
+        return None
+
+
+def _parse_option_enum(cbinding_enum, enum_name: str) -> Enum:
+    """
+    Helper function to parse the enum values from the cbindings module.
+    """
+    options = {
+        option.strip('_'): value for option, value
+        in cbinding_enum.__dict__.items() if '__' not in option
+    }
+    options_enum = Enum(enum_name, options)
+    return options_enum
 
 
 class SensorDevice:
