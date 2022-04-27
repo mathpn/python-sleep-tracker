@@ -13,8 +13,14 @@ class MetadataDB:
             CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT)
         """)
         self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_devices (
+                user_id INTEGER, device_id INTEGER, PRIMARY KEY (user_id, device_id),
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                FOREIGN KEY (device_id) REFERENCES devices(device_id))
+        """)
+        self.conn.execute("""
             CREATE TABLE IF NOT EXISTS devices (device_id INTEGER PRIMERY KEY, mac_address TEXT,
-            raw_data INT, sample_frequency INT, acc_range INT, gyro_range INT)
+            raw_data INT, acc_frequency INT, gyro_frequency INT, acc_range INT, gyro_range INT)
         """)
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS sessions (session INTEGER PRIMARY KEY, user_id INT, timestamp INT,
