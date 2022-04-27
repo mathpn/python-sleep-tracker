@@ -1,5 +1,5 @@
 import sqlite3
-from typing import Optional
+from typing import Dict, List, Optional
 
 
 class MetadataDB:
@@ -37,17 +37,32 @@ class MetadataDB:
             raise ValueError("Username already exists")
         self.conn.commit()
 
-    def lookup_device(self, mac_address: str) -> Optional[sqlite3.Row]:
-        cursor = self.conn.execute("SELECT * FROM devices WHERE mac_address = ?", (mac_address,))
-        return cursor.fetchone()
+    def get_user_data(self, username: str) -> List[Dict]:
+        cur = self.conn.execute("""
+            SELECT devices.mac_address, devices.raw_data, devices.sample_frequency, devices.acc_range, devices.gyro_range
+            FROM users
+            INNER JOIN user_devices ON users.user_id = user_devices.user_id
+            INNER JOIN devices ON devices.device_id = user_devices.device_id
+            WHERE users.username = ?
+        """, (username,))
+        devices = cur.fetchall()
+        return [_dict_from_row(device) for device in devices]
 
-    def add_device(
-            self, mac_address: int, raw_data: bool, sample_frequency: int,
-            acc_range: int, gyro_range: int) -> None:
+
+    def lookup_device(self, mac_address: str) -> Dict:
+        cursor = self.conn.execute("SELECT * FROM devices WHERE mac_address = ?", (mac_address,))
+        return _dict_from_row(cursor.fetchone())
+
+    def add_device(self, device_config: Dict) -> None:
         self.conn.execute("""
             INSERT INTO devices (mac_address, raw_data, sample_frequency, acc_range, gyro_range)
-            VALUES (?, ?, ?, ?, ?)", (mac_address, raw_data, sample_frequency, acc_range, gyro_range))
-        """, (mac_address, raw_data, sample_frequency, acc_range, gyro_range))
+            VALUES (?, ?, ?, ?, ?)", (mac_address, raw_data, acc_frequency, gyro_frequency, acc_range, gyro_range))
+        """, (
+                device_config['mac_address'], device_config['raw_data'],
+                device_config['sample_frequency'], device_config['acc_range'],
+                device_config['gyro_range']
+            )
+        )
         self.conn.commit()
 
     def add_session(self, user_id: int, timestamp: int, device_id: int) -> None:
@@ -65,3 +80,9 @@ class MetadataDB:
         return self.conn.execute("""
             SELECT * FROM sessions WHERE user_id = ?
         """, (user_id,))
+
+
+def _dict_from_row(row):
+    if not row:
+        return {}
+    return dict(zip(row.keys(), row))
