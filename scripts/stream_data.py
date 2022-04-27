@@ -7,12 +7,12 @@ import argparse
 import multiprocessing as mp
 from threading import Event
 
-from mbientlab.metawear import MetaWear
 
 from src.data_writer import DataWriter
+from src.device import MetaWearDevice
 from src.helpers import consume_data_queue
 from src.logger import LOG
-from src.sensor_stream import SensorDevice
+from src.streamer import DataStreamer
 
 
 def main():
@@ -22,7 +22,9 @@ def main():
     parser.add_argument('--max-queue-size', type=int, help='Maximum queue size.', default=2500)
     args = parser.parse_args()
 
-    device = MetaWear(args.address)
+    device = MetaWearDevice(args.address)
+    device.connect()
+    # TODO configure sensors
 
     acc_queue = mp.Queue(args.max_queue_size)
     gyro_queue = mp.Queue(args.max_queue_size)
@@ -32,11 +34,10 @@ def main():
     main_event = Event()
     acc_writer = DataWriter("data/acc_data.csv", "(g/s)", raw=args.raw)
     gyro_writer = DataWriter("data/gyro_data.csv", "(rad/s)", raw=args.raw)
-    stream = SensorDevice(device, acc_queue, gyro_queue, raw=args.raw)
-    stream.connect()
-    stream.register_sensors(50.0, 8.0)
+    streamer = DataStreamer(device, acc_queue, gyro_queue, raw=args.raw)
+    streamer.subscribe_to_sensors()
 
-    stream_process = mp.Process(target=stream.stream_data())
+    stream_process = mp.Process(target=streamer.start_streaming())
     acc_write_process = mp.Process(target=consume_data_queue, args=(acc_queue_event, acc_queue, acc_writer))
     gyro_write_process = mp.Process(target=consume_data_queue, args=(gyro_queue_event, gyro_queue, gyro_writer))
     stream_process.start()
@@ -49,7 +50,7 @@ def main():
         LOG.info('Keyboard interrupt received. Stopping stream.')
         if stream_process.is_alive():
             stream_process.close()
-        stream.stop_streaming()
+        streamer.stop_streaming()
         LOG.info("waiting for write process to finish, please wait...")
         acc_queue.close()
         gyro_queue.close()
