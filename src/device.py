@@ -150,7 +150,7 @@ class MetaWearDevice(Device):
         LOG.warning('Gyroscope not supported on this device')
         return None
 
-    def return_gyro_range_options(self) -> Optional[enum]:
+    def return_gyro_range_options(self) -> Optional[Enum]:
         model = self.gyro_model
         enum_name = 'Gyroscope Range'
         if model == Const.MODULE_GYRO_TYPE_BMI160:
