@@ -9,6 +9,7 @@ class MetadataDB:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = 1")
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT)
         """)
