@@ -18,19 +18,25 @@ from src.logger import LOG
 class Device(ABC):
 
     @abstractmethod
+    def connect(self, *args, **kwargs) -> None:
+        pass
+
+    @abstractmethod
     def start_streaming(self) -> None:
         pass
-    
+
     @abstractmethod
     def stop_streaming(self) -> None:
         pass
 
     @abstractmethod
-    def subscribe_to_accelerometer(self, acc_callback: Callable, data_processor_creator: Optional[Callable]) -> None:
+    def subscribe_to_accelerometer(
+        self, acc_callback: Callable, data_processor_creator: Optional[Callable] = None) -> None:
         pass
 
     @abstractmethod
-    def subscribe_to_gyroscope(self, gyro_callback: Callable, data_processor_creator: Optional[Callable]) -> None:
+    def subscribe_to_gyroscope(
+        self, gyro_callback: Callable, data_processor_creator: Optional[Callable] = None) -> None:
         pass
 
 
@@ -155,9 +161,26 @@ class MetaWearDevice(Device):
         return None
 
     def configure_accelerometer(self, acc_freq: Enum, acc_range: Enum) -> None:
-        libmetawear.mbl_mw_acc_set_odr(self.device.board, acc_freq.value)
-        libmetawear.mbl_mw_acc_set_range(self.device.board, acc_range.value)
-        libmetawear.mbl_mw_acc_write_acceleration_config(self.device.board)
+        acc_model = self.acc_model
+        if acc_model == Const.MODULE_ACC_TYPE_BMI160:
+            libmetawear.mbl_mw_acc_bmi160_set_odr(self.device.board, 25)
+            libmetawear.mbl_mw_acc_bosch_set_range(self.device.board, 16)
+            libmetawear.mbl_mw_acc_bosch_write_acceleration_config(self.device.board)
+        elif acc_model == Const.MODULE_ACC_TYPE_BMI270:
+            libmetawear.mbl_mw_acc_bmi270_set_odr(self.device.board, acc_freq.value)
+            libmetawear.mbl_mw_acc_bosch_set_range(self.device.board, acc_range.value)
+            libmetawear.mbl_mw_acc_bosch_write_acceleration_config(self.device.board)
+        elif acc_model == Const.MODULE_ACC_TYPE_BMA255:
+            libmetawear.mbl_mw_acc_bma255_set_odr(self.device.board, acc_freq.value)
+            libmetawear.mbl_mw_acc_bosch_set_range(self.device.board, acc_range.value)
+            libmetawear.mbl_mw_acc_bosch_write_acceleration_config(self.device.board)
+        elif acc_model == Const.MODULE_ACC_TYPE_MMA8452Q:
+            libmetawear.mbl_mw_acc_mma8452q_set_odr(self.device.board, acc_freq.value)
+            libmetawear.mbl_mw_acc_mma8452q_set_range(self.device.board, acc_range.value)
+            libmetawear.mbl_mw_acc_mma8452q_write_acceleration_config(self.device.board)
+        else:
+            LOG.warning('Accelerometer not supported on this device')
+            return
         self.acc_configured = True
 
     def configure_gyroscope(self, gyro_freq: Enum, gyro_range: Enum) -> None:
@@ -165,16 +188,17 @@ class MetaWearDevice(Device):
         if gyro_model == Const.MODULE_GYRO_TYPE_BMI160:
             libmetawear.mbl_mw_gyro_bmi160_set_odr(self.device.board, gyro_freq.value)
             libmetawear.mbl_mw_gyro_bmi160_set_range(self.device.board, gyro_range.value)
+            libmetawear.mbl_mw_gyro_bmi160_write_config(self.device.board)
         elif gyro_model == Const.MODULE_GYRO_TYPE_BMI270:
             libmetawear.mbl_mw_gyro_bmi270_set_odr(self.device.board, gyro_freq.value)
             libmetawear.mbl_mw_gyro_bmi270_set_range(self.device.board, gyro_range.value)
+            libmetawear.mbl_mw_gyro_bmi270_write_config(self.device.board)
         else:
             LOG.warning('Gyroscope not supported on this device')
             return
-        libmetawear.mbl_mw_gyro_write_config(self.device.board)
         self.gyro_configured = True
 
-    def _get_acc_signal(self, data_processor_creator: Optional[Callable]) -> int:
+    def _get_acc_signal(self, data_processor_creator: Optional[Callable] = None) -> int:
         if not self.acc_configured:
             raise RuntimeError('Accelerometer must be configured before subscribing to signals')
         acc_signal_id = libmetawear.mbl_mw_acc_get_acceleration_data_signal(self.device.board)
@@ -196,15 +220,15 @@ class MetaWearDevice(Device):
             gyro_signal_id = data_processor_creator(gyro_signal_id, 5, 3)
         return gyro_signal_id
 
-    def subscribe_to_accelerometer(self, acc_callback: Callable, data_processor_creator: Optional[Callable]) -> None:
+    def subscribe_to_accelerometer(self, acc_callback: Callable, data_processor_creator: Optional[Callable] = None) -> None:
         self.acc_callback = cbindings.FnVoid_VoidP_DataP(acc_callback)
         acc_signal_id = self._get_acc_signal(data_processor_creator)
-        libmetawear.mbl_mw_datasignal_subscribe(acc_signal_id, None, acc_callback)
+        libmetawear.mbl_mw_datasignal_subscribe(acc_signal_id, None, self.acc_callback)
 
-    def subscribe_to_gyroscope(self, acc_callback: Callable, data_processor_creator: Optional[Callable]) -> None:
-        self.acc_callback = cbindings.FnVoid_VoidP_DataP(acc_callback)
+    def subscribe_to_gyroscope(self, gyro_callback: Callable, data_processor_creator: Optional[Callable] = None) -> None:
+        self.gyro_callback = cbindings.FnVoid_VoidP_DataP(gyro_callback)
         gyro_signal_id = self._get_gyro_signal(data_processor_creator)
-        libmetawear.mbl_mw_datasignal_subscribe(gyro_signal_id, None, acc_callback)
+        libmetawear.mbl_mw_datasignal_subscribe(gyro_signal_id, None, self.gyro_callback)
 
     def start_streaming(self) -> None:
         if not self.acc_callback or not self.gyro_callback:
@@ -237,7 +261,7 @@ class MetaWearDevice(Device):
             raise RuntimeError('Gyroscope not supported on this device')
         time.sleep(1)
         libmetawear.mbl_mw_debug_reset(self.device.board)
-        
+
 
 def _parse_option_enum(cbinding_enum, enum_name: str) -> Enum:
     """
