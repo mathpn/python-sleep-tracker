@@ -10,7 +10,7 @@ import threading
 import time
 
 from src.data_writer import DataWriter
-from src.device import Device
+from src.device import MetaWearDevice
 from src.logger import LOG
 from src.streamer import DataStreamer
 
@@ -40,10 +40,11 @@ def consume_data_queue(event: Event, data_queue: mp.Queue, writer: DataWriter, s
 
 
 def stream_data(
-        device: Device, session_id: int, acc_max_queue_size: int, gyro_max_queue_size: int,
+        device: MetaWearDevice, session_id: int, acc_max_queue_size: int, gyro_max_queue_size: int,
         raw: bool = False) -> None:
-
-    device.connect()
+    
+    if not device.connected:
+        device.connect()
 
     acc_queue = mp.Queue(acc_max_queue_size)
     gyro_queue = mp.Queue(gyro_max_queue_size)

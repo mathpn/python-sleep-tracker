@@ -68,11 +68,17 @@ class MetaWearDevice(Device):
     def __init__(self, mac_address: str):
         self.mac_address = mac_address
         self.device = MetaWear(self.mac_address)
-        self.device.on_disconnect = lambda status: LOG.warning(f"disconnected from device {self.mac_address}")
+        self.device.on_disconnect = self._disconnect_callback
+        self.connected = False
         self.acc_configured = False
         self.gyro_configured = False
         self.acc_callback = None
         self.gyro_callback = None
+        self.device_info = {}
+
+    def _disconnect_callback(self, status):
+        LOG.warning(f"disconnected from device {self.mac_address}: {status}")
+        self.connected = False
 
     def connect(
         self, min_conn_interval: float = 7.5, max_conn_interval: float = 7.5, latency: int = 0, timeout: int = 6000
@@ -85,7 +91,6 @@ class MetaWearDevice(Device):
             latency (int): Maximum number of consecutive non-answered calls allowed.
             timeout (int): Connection timeout in miliseconds.
         """
-        self.device.on_disconnect = lambda status: LOG.warning("disconnected from device")
         try:
             self.device.connect()
         except Exception as exc:
@@ -94,6 +99,7 @@ class MetaWearDevice(Device):
         libmetawear.mbl_mw_settings_set_connection_parameters(
             self.device.board, min_conn_interval, max_conn_interval, latency, timeout
         )
+        self.connected = True
 
     def disconnect(self):
         libmetawear.mbl_mw_debug_reset(self.device.board)
