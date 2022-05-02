@@ -112,5 +112,5 @@ class DataStreamer:
 
     def subscribe_to_sensors(self, data_processor_creator: Optional[Callable] = _create_standard_preprocessor) -> None:
         """ Subscribe to sensor signals. """
-        self.device.subscribe_to_accelerometer(self._acc_data_handler, data_processor_creator)
-        self.device.subscribe_to_gyroscope(self._gyro_data_handler, data_processor_creator)
+        self.device.subscribe_to_accelerometer(self._acc_data_handler(), data_processor_creator)
+        self.device.subscribe_to_gyroscope(self._gyro_data_handler(), data_processor_creator)
