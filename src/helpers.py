@@ -52,14 +52,16 @@ def stream_data(
     gyro_queue_event = mp.Event()
 
     main_event = threading.Event()
-    acc_writer = DataWriter(f"data/session/{session_id}_acc_data.csv", "(g/s)", raw=raw)
+    acc_writer = DataWriter(f"data/sessions/{session_id}_acc_data.csv", "(g/s)", raw=raw)
     gyro_writer = DataWriter(f"data/sessions/{session_id}_gyro_data.csv", "(rad/s)", raw=raw)
     streamer = DataStreamer(device, acc_queue, gyro_queue, raw=raw)
+    print('subscribing to data')
     streamer.subscribe_to_sensors()
 
     stream_process = mp.Process(target=streamer.start_streaming())
     acc_write_process = mp.Process(target=consume_data_queue, args=(acc_queue_event, acc_queue, acc_writer))
     gyro_write_process = mp.Process(target=consume_data_queue, args=(gyro_queue_event, gyro_queue, gyro_writer))
+    print('start streaming process')
     stream_process.start()
     acc_write_process.start()
     gyro_write_process.start()
