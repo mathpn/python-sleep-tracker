@@ -7,12 +7,58 @@ sensor data from a MetaWear device.
 
 from abc import ABC, abstractmethod
 from enum import Enum
+from functools import partial
 import time
 from typing import Callable, Optional
+from threading import Event
 
 from mbientlab.metawear import cbindings, Const, libmetawear, MetaWear
 
 from src.logger import LOG
+
+
+def _create_standard_preprocessor(signal_id: int, window: int, min_delta: float) -> int:
+    """ Create a preprocessor for the given signal. """
+    signal_id = _register_rss_preprocessor(signal_id)
+    signal_id = _register_average_preprocessor(signal_id, window)
+    signal_id = _register_delta_preprocessor(signal_id, min_delta)
+    return signal_id
+
+
+def _register_rss_preprocessor(signal_id: int) -> int:
+    """ Register the RMS preprocessor. """
+    register_callable = partial(libmetawear.mbl_mw_dataprocessor_rms_create, signal_id, None)
+    return _register_data_processor(register_callable)
+
+
+def _register_average_preprocessor(signal_id: int, window: int) -> int:
+    """ Register moving average preprocessor. """
+    register_callable = partial(libmetawear.mbl_mw_dataprocessor_average_create, signal_id, window, None)
+    return _register_data_processor(register_callable)
+
+
+def _register_delta_preprocessor(signal_id: int, min_delta: float) -> int:
+    """ Register the delta preprocessor. """
+    register_callable = partial(
+        libmetawear.mbl_mw_dataprocessor_delta_create, signal_id,
+        cbindings.DeltaMode.DIFFERENTIAL, min_delta, None)
+    return _register_data_processor(register_callable)
+
+
+def _register_data_processor(register_callable: partial) -> int:
+    wait_event = Event()
+    processor_signal = 0
+
+    def processor_handler(_, pointer):
+        nonlocal processor_signal
+        processor_signal = pointer
+        wait_event.set()
+
+    rms_handler = cbindings.FnVoid_VoidP_VoidP(processor_handler)
+    register_callable(rms_handler)
+    wait_event.wait()
+    return processor_signal
+
 
 
 class Device(ABC):
@@ -235,12 +281,16 @@ class MetaWearDevice(Device):
             gyro_signal_id = data_processor_creator(gyro_signal_id, 5, 3)
         return gyro_signal_id
 
-    def subscribe_to_accelerometer(self, acc_callback: Callable, data_processor_creator: Optional[Callable] = None) -> None:
+    def subscribe_to_accelerometer(
+            self, acc_callback: Callable,
+            data_processor_creator: Optional[Callable] = _create_standard_preprocessor) -> None:
         self.acc_callback = cbindings.FnVoid_VoidP_DataP(acc_callback)
         acc_signal_id = self._get_acc_signal(data_processor_creator)
         libmetawear.mbl_mw_datasignal_subscribe(acc_signal_id, None, self.acc_callback)
 
-    def subscribe_to_gyroscope(self, gyro_callback: Callable, data_processor_creator: Optional[Callable] = None) -> None:
+    def subscribe_to_gyroscope(
+            self, gyro_callback: Callable,
+            data_processor_creator: Optional[Callable] = _create_standard_preprocessor) -> None:
         self.gyro_callback = cbindings.FnVoid_VoidP_DataP(gyro_callback)
         gyro_signal_id = self._get_gyro_signal(data_processor_creator)
         libmetawear.mbl_mw_datasignal_subscribe(gyro_signal_id, None, self.gyro_callback)
