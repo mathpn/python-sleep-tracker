@@ -45,7 +45,7 @@ class DataStreamer:
 
     def _data_handler(self, _, raw_data, data_queue: mp.Queue, msg: str) -> None:
         data = parse_value(raw_data)
-        LOG.debug(f'{msg}: {data:.4f}')
+        LOG.debug(f'{msg}: {data}')
         if self.raw:
             data = [data.x, data.y, data.z]
         else:
