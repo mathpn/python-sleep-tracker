@@ -99,7 +99,7 @@ class MetaWearDevice(Device):
         gyro_configured (bool): Flag indicating if gyroscope is configured.
         acc_callback (Callable): Accelerometer callback function.
         gyro_callback (Callable): Gyroscope callback function.
-    
+
     Methods:
         start_streaming: Start streaming sensor data.
         stop_streaming: Stop streaming sensor data.
@@ -217,25 +217,14 @@ class MetaWearDevice(Device):
         return None
 
     def configure_accelerometer(self, acc_freq: Enum, acc_range: Enum) -> None:
-        if self.acc_model == Const.MODULE_ACC_TYPE_BMI160:
-            libmetawear.mbl_mw_acc_bmi160_set_odr(self.device.board, 25)
-            libmetawear.mbl_mw_acc_bosch_set_range(self.device.board, 16)
-            libmetawear.mbl_mw_acc_bosch_write_acceleration_config(self.device.board)
-        elif self.acc_model == Const.MODULE_ACC_TYPE_BMI270:
-            libmetawear.mbl_mw_acc_bmi270_set_odr(self.device.board, acc_freq.value)
-            libmetawear.mbl_mw_acc_bosch_set_range(self.device.board, acc_range.value)
-            libmetawear.mbl_mw_acc_bosch_write_acceleration_config(self.device.board)
-        elif self.acc_model == Const.MODULE_ACC_TYPE_BMA255:
-            libmetawear.mbl_mw_acc_bma255_set_odr(self.device.board, acc_freq.value)
-            libmetawear.mbl_mw_acc_bosch_set_range(self.device.board, acc_range.value)
-            libmetawear.mbl_mw_acc_bosch_write_acceleration_config(self.device.board)
-        elif self.acc_model == Const.MODULE_ACC_TYPE_MMA8452Q:
-            libmetawear.mbl_mw_acc_mma8452q_set_odr(self.device.board, acc_freq.value)
-            libmetawear.mbl_mw_acc_mma8452q_set_range(self.device.board, acc_range.value)
-            libmetawear.mbl_mw_acc_mma8452q_write_acceleration_config(self.device.board)
-        else:
-            LOG.warning('Accelerometer not supported on this device')
-            return
+        # Getting values from enum name strings is horrible but necessary
+        # since dataprocessor is not available when configuring accelerometer
+        # using lower level classes (like we do for the gyroscope)
+        # Enums are used anyway to ensure valid options.
+        acc_freq_float = _parse_enum_name(acc_freq.name)
+        acc_range_float = _parse_enum_name(acc_range.name)
+        libmetawear.mbl_mw_acc_set_odr(self.device.board, acc_freq_float)
+        libmetawear.mbl_mw_acc_set_range(self.device.board, acc_range_float)
         self.acc_configured = True
 
     def configure_gyroscope(self, gyro_freq: Enum, gyro_range: Enum) -> None:
@@ -255,17 +244,9 @@ class MetaWearDevice(Device):
     def _get_acc_signal(self, data_processor_creator: Optional[Callable] = None) -> int:
         if not self.acc_configured:
             raise RuntimeError('Accelerometer must be configured before subscribing to signals')
-        if self.acc_model in (
-                Const.MODULE_ACC_TYPE_BMI160,
-                Const.MODULE_ACC_TYPE_BMI270,
-                Const.MODULE_ACC_TYPE_BMA255):
-            acc_signal_id = libmetawear.mbl_mw_acc_bosch_get_acceleration_data_signal(self.device.board)
-        elif self.acc_model == Const.MODULE_ACC_TYPE_MMA8452Q:
-            acc_signal_id = libmetawear.mbl_mw_acc_mma8452q_get_acceleration_data_signal(self.device.board)
-        else:
-            raise RuntimeError('Accelerometer not supported on this device')
+        acc_signal_id = libmetawear.mbl_mw_acc_get_acceleration_data_signal(self.device.board)
         if data_processor_creator:
-            acc_signal_id = data_processor_creator(acc_signal_id, 5, 0.005)
+            acc_signal_id = data_processor_creator(acc_signal_id, 5, 0.01)
         return acc_signal_id
 
     def _get_gyro_signal(self, data_processor_creator: Optional[Callable]) -> int:
@@ -296,20 +277,9 @@ class MetaWearDevice(Device):
         libmetawear.mbl_mw_datasignal_subscribe(gyro_signal_id, None, self.gyro_callback)
 
     def start_streaming(self) -> None:
-        if not self.acc_callback or not self.gyro_callback:
-            raise RuntimeError('No callback function provided to start streaming')
-        if self.acc_model in (
-                Const.MODULE_ACC_TYPE_BMI160,
-                Const.MODULE_ACC_TYPE_BMI270,
-                Const.MODULE_ACC_TYPE_BMA255):
-            libmetawear.mbl_mw_acc_bosch_enable_acceleration_sampling(self.device.board)
-            libmetawear.mbl_mw_acc_bosch_start(self.device.board)
-        elif self.acc_model == Const.MODULE_ACC_TYPE_MMA8452Q:
-            libmetawear.mbl_mw_acc_mma8452q_enable_acceleration_sampling(self.device.board)
-            libmetawear.mbl_mw_acc_mma8452q_start(self.device.board)
-        else:
-            raise RuntimeError('Accelerometer not supported on this device')
- 
+        libmetawear.mbl_mw_acc_enable_acceleration_sampling(self.device.board)
+        libmetawear.mbl_mw_acc_start(self.device.board)
+
         if self.gyro_model == Const.MODULE_GYRO_TYPE_BMI160:
             libmetawear.mbl_mw_gyro_bmi160_enable_rotation_sampling(self.device.board)
             libmetawear.mbl_mw_gyro_bmi160_start(self.device.board)
@@ -347,3 +317,12 @@ def _parse_option_enum(cbinding_enum, enum_name: str) -> Enum:
     }
     options_enum = Enum(enum_name, options)
     return options_enum
+
+
+def _parse_enum_name(enum_name: str) -> float:
+    """ Helper to parse a enum option name to a valid float. """
+    clean_string = ''.join(ch for ch in enum_name if ch.isdigit())
+    value = float(clean_string.replace('_', '.'))
+    if value < 0 or value is None:
+        raise ValueError('Invalid enum value: {}'.format(value))
+    return value
