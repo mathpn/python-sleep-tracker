@@ -1,7 +1,9 @@
 from enum import Enum
 import os
 import time
-from typing import Dict
+from datetime import datetime
+from typing import Dict, List, Optional
+
 from src.device import MetaWearDevice
 from src.metadata import MetadataDB
 
@@ -71,6 +73,16 @@ class CLI:
     def _save_device_config(self, device_config: Dict) -> Optional[int]:
         device_id = self.metadata_db.add_device(device_config)
         return device_id
+
+    def get_unprocessed_sessions(self, user_id: int) -> Optional[List[int]]
+        unprocessed_sessions = self.metadata_db.get_unprocessed_sessions(user_id)
+        if not unprocessed_sessions:
+            return None
+        session_ids = [session['session'] for session in unprocessed_sessions]
+        session_timestamps = [session['timestamp'] for session in unprocessed_sessions]
+        for session_id, timestamp in zip(session_ids, session_timestamps):
+            print(f"Session ID {session_id} started at {datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S'))}")
+        return session_ids
 
 
 def _input_device_config(mac_address: str) -> Dict:

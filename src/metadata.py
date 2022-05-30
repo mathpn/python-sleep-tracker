@@ -63,7 +63,7 @@ class MetadataDB:
         cursor = self.conn.execute("SELECT * FROM devices WHERE mac_address = ?", (mac_address,))
         return _dict_from_row(cursor.fetchone())
 
-    def add_device(self, device_config: Dict) -> int:
+    def add_device(self, device_config: Dict) -> Optional[int]:
         cur = self.conn.execute("""
             INSERT INTO devices (mac_address, raw_data, acc_frequency, gyro_frequency, acc_range, gyro_range)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -92,7 +92,7 @@ class MetadataDB:
             raise ValueError("invalid device_id or user_id")
         self.conn.commit()
 
-    def add_session(self, user_id: int, timestamp: int, device_id: int) -> int:
+    def add_session(self, user_id: int, timestamp: int, device_id: int) -> Optional[int]:
         try:
             cur = self.conn.execute("""
                 INSERT INTO sessions (user_id, timestamp, device_id)
@@ -107,6 +107,11 @@ class MetadataDB:
     def get_sessions(self, user_id: int) -> sqlite3.Cursor:
         return self.conn.execute("""
             SELECT * FROM sessions WHERE user_id = ?
+        """, (user_id,))
+
+    def get_unprocessed_sessions(self, user_id: int) -> sqlite3.Cursor:
+        return self.conn.execute("""
+            SELECT * FROM sessions WHERE user_id = ? AND processed = 0
         """, (user_id,))
 
 
