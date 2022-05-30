@@ -15,7 +15,8 @@ def main():
         "--max-queue-size", type=int, default=25000, help="Maximum number of data points to store in queue")
     args = parser.parse_args()
     cli = CLI('data')
-    user_data = cli.log_in()
+    user_id = cli.log_in()
+    user_data = cli.get_device_config(user_id)
     start = input("Do you want to start a session? (y/n) ")
     if start not in 'Yy':
         exit(0)

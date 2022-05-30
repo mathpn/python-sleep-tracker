@@ -17,10 +17,13 @@ class CLI:
         device = self.metadata_db.lookup_device(mac_address)
         return device
 
-    def log_in(self) -> Dict:
+    def log_in(self) -> int:
         username = input("Please provide a username: ")
         user_id = self.metadata_db.get_user_id(username)
         print(f"Welcome {username}")
+        return user_id
+
+    def get_device_config(self, user_id: int) -> Dict:
         device_config = self._choose_device(user_id)
         self.metadata_db.add_user_device(user_id, device_config['device_id'])
         device = MetaWearDevice(device_config['mac_address'])
@@ -65,7 +68,7 @@ class CLI:
             device_config = devices[devices.index(device_config)]
         return device_config
 
-    def _save_device_config(self, device_config: Dict) -> int:
+    def _save_device_config(self, device_config: Dict) -> Optional[int]:
         device_id = self.metadata_db.add_device(device_config)
         return device_id
 
