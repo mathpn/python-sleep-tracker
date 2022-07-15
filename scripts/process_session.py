@@ -29,6 +29,16 @@ def aggregate_data(data, bins: int):
     return aggregate
 
 
+def aggregate_to_stages(acc_agg: np.ndarray, gyro_agg: np.ndarray) -> np.ndarray:
+    stages = np.zeros_like(acc_agg, dtype=np.int16)
+    for i in range(len(stages)):
+        if any([acc_agg[i] <= 20, gyro_agg[i] <= 20]):
+            stages[i] = 1
+        elif all([acc_agg[i] <= 200, gyro_agg[i] <= 200]):
+            stages[i] = 2
+        else:
+            stages[i] = 3
+    return stages
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('session_number', type=int)
