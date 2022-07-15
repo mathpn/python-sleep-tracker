@@ -39,6 +39,20 @@ def aggregate_to_stages(acc_agg: np.ndarray, gyro_agg: np.ndarray) -> np.ndarray
         else:
             stages[i] = 3
     return stages
+
+
+def pretty_print_stages(stages: np.ndarray):
+    row_1, row_2, row_3 = [], [], []
+    for i, stage in enumerate(stages):
+        row_3.append('||' if stage >= 3 else '  ')
+        row_2.append('||' if stage >= 2 else '  ')
+        row_1.append('||' if stage >= 1 else '  ')
+    print("--------- sleep stages ---------")
+    print('awake:        ' + ''.join(row_3))
+    print('light sleep:  ' + ''.join(row_2))
+    print('deep sleep:   ' + ''.join(row_1))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('session_number', type=int)
@@ -63,6 +77,9 @@ def main():
     gyro_aggregate = aggregate_data(gyro_sorted_insert, bins=args.bins)
     gyro_aggregate = np.array(gyro_aggregate)
     print(f'gyro_aggregate: \n{np.round(gyro_aggregate, 3)}')
+
+    stages = aggregate_to_stages(acc_aggregate, gyro_aggregate)
+    pretty_print_stages(stages)
 
 
 if __name__ == '__main__':
